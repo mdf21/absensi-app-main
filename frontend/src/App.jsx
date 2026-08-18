@@ -90,6 +90,16 @@ const [newHolidayName, setNewHolidayName] = useState('');
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
   const rafRef = useRef(null);
+  const selectedDateRef = useRef(selectedDate);
+  const handleMarkAttendanceRef = useRef(handleMarkAttendance);
+
+  useEffect(() => {
+    selectedDateRef.current = selectedDate;
+  }, [selectedDate]);
+
+  useEffect(() => {
+    handleMarkAttendanceRef.current = handleMarkAttendance;
+  });
 
   const safeUsers = Array.isArray(users) ? users : [];
   const safeHolidays = Array.isArray(holidays) ? holidays : [];
@@ -384,6 +394,9 @@ const [bulkEditValue, setBulkEditValue] = useState('');
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
     }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
     setCameraActive(false);
   };
 
@@ -413,17 +426,28 @@ const [bulkEditValue, setBulkEditValue] = useState('');
           const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
           const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'dontInvert' });
           if (code && code.data) {
+            console.log('[Scanner] QR decoded:', code.data);
             try {
               const userData = JSON.parse(code.data);
-              const matchedUser = safeUsers.find(u => u.id === userData.id || String(u.nomorInduk) === String(userData.nomorInduk));
+              const currentUsers = dataRef.current.users || [];
+              console.log('[Scanner] Current users count:', currentUsers.length);
+              console.log('[Scanner] QR payload:', userData);
+              const matchedUser = currentUsers.find(u => u.id === userData.id || String(u.nomorInduk) === String(userData.nomorInduk));
+              console.log('[Scanner] Matched user:', matchedUser ? matchedUser.nama : 'null');
               if (matchedUser) {
                 setScannedResult(matchedUser);
-                handleMarkAttendance(matchedUser.id, 'Hadir');
+                const currentDate = selectedDateRef.current;
+                console.log('[Scanner] Marking attendance for date:', currentDate, 'user:', matchedUser.id);
+                handleMarkAttendanceRef.current(matchedUser.id, 'Hadir');
                 showToastMessage(`QR dikenali: ${matchedUser.nama} berhasil diabsen sebagai Hadir`, 'success');
                 stopCamera();
                 return;
+              } else {
+                console.warn('[Scanner] No match found for QR data:', userData);
               }
-            } catch (err) {}
+            } catch (err) {
+              console.error('[Scanner] JSON parse error:', err);
+            }
           }
         }
         rafRef.current = requestAnimationFrame(tick);
@@ -449,19 +473,25 @@ const [bulkEditValue, setBulkEditValue] = useState('');
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0);
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const code = jsQR(imageData.data, imageData.width, imageData.height);
+        const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'dontInvert' });
         if (code && code.data) {
+          console.log('[Scanner] Image QR decoded:', code.data);
           try {
             const userData = JSON.parse(code.data);
-            const matchedUser = safeUsers.find(u => u.id === userData.id || String(u.nomorInduk) === String(userData.nomorInduk));
+            const currentUsers = dataRef.current.users || [];
+            console.log('[Scanner] Image scan - current users count:', currentUsers.length);
+            console.log('[Scanner] Image scan - QR payload:', userData);
+            const matchedUser = currentUsers.find(u => u.id === userData.id || String(u.nomorInduk) === String(userData.nomorInduk));
+            console.log('[Scanner] Image scan - matched user:', matchedUser ? matchedUser.nama : 'null');
             if (matchedUser) {
               setScannedResult(matchedUser);
-              handleMarkAttendance(matchedUser.id, 'Hadir');
+              handleMarkAttendanceRef.current(matchedUser.id, 'Hadir');
               showToastMessage(`QR dikenali: ${matchedUser.nama} berhasil diabsen sebagai Hadir`, 'success');
             } else {
               showToastMessage("Data QR tidak ditemukan di sistem.", 'error');
             }
           } catch (err) {
+            console.error('[Scanner] Image scan - JSON parse error:', err);
             showToastMessage("Format QR tidak valid.", 'error');
           }
         } else {
