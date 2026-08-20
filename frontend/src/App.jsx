@@ -29,7 +29,6 @@ export default function App() {
   const dataLoadedRef = useRef(false);
 const fileInputRef = useRef(null);
 const backupInputRef = useRef(null);
-const appLogoInputRef = useRef(null);
 const ttdInputRef = useRef(null);
 
   const getLocalData = (key, defaultVal) => {
@@ -62,11 +61,8 @@ const ttdInputRef = useRef(null);
   });
   
   const [appSettings, setAppSettings] = useState({
-      appName: "Sistem Absensi",
-      appLogo: defaultLogoUrl
+      appName: "Sistem Absensi"
   });
-  
-  const [logoError, setLogoError] = useState(false);
   
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
 const [selectedClass, setSelectedClass] = useState('Semua');
@@ -91,7 +87,8 @@ const [newHolidayName, setNewHolidayName] = useState('');
   const streamRef = useRef(null);
   const rafRef = useRef(null);
   const selectedDateRef = useRef(selectedDate);
-  const handleMarkAttendanceRef = useRef(handleMarkAttendance);
+  const handleMarkAttendanceRef = useRef(null);
+  const scanCooldownRef = useRef(0);
 
   useEffect(() => {
     selectedDateRef.current = selectedDate;
@@ -426,27 +423,37 @@ const [bulkEditValue, setBulkEditValue] = useState('');
           const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
           const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'dontInvert' });
           if (code && code.data) {
-            console.log('[Scanner] QR decoded:', code.data);
-            try {
-              const userData = JSON.parse(code.data);
-              const currentUsers = dataRef.current.users || [];
-              console.log('[Scanner] Current users count:', currentUsers.length);
-              console.log('[Scanner] QR payload:', userData);
-              const matchedUser = currentUsers.find(u => u.id === userData.id || String(u.nomorInduk) === String(userData.nomorInduk));
-              console.log('[Scanner] Matched user:', matchedUser ? matchedUser.nama : 'null');
-              if (matchedUser) {
-                setScannedResult(matchedUser);
-                const currentDate = selectedDateRef.current;
-                console.log('[Scanner] Marking attendance for date:', currentDate, 'user:', matchedUser.id);
-                handleMarkAttendanceRef.current(matchedUser.id, 'Hadir');
-                showToastMessage(`QR dikenali: ${matchedUser.nama} berhasil diabsen sebagai Hadir`, 'success');
-                stopCamera();
-                return;
-              } else {
-                console.warn('[Scanner] No match found for QR data:', userData);
-              }
-            } catch (err) {
-              console.error('[Scanner] JSON parse error:', err);
+            const now = Date.now();
+            if (now - scanCooldownRef.current < 2000) {
+                // Cooldown aktif, hindari scan duplikat
+            } else {
+                console.log('[Scanner] QR decoded:', code.data);
+                try {
+                  const userData = JSON.parse(code.data);
+                  const currentUsers = dataRef.current.users || [];
+                  console.log('[Scanner] Current users count:', currentUsers.length);
+                  console.log('[Scanner] QR payload:', userData);
+                  const matchedUser = currentUsers.find(u => u.id === userData.id || String(u.nomorInduk) === String(userData.nomorInduk));
+                  console.log('[Scanner] Matched user:', matchedUser ? matchedUser.nama : 'null');
+                  if (matchedUser) {
+                    scanCooldownRef.current = now;
+                    setScannedResult(matchedUser);
+                    const currentDate = selectedDateRef.current;
+                    console.log('[Scanner] Marking attendance for date:', currentDate, 'user:', matchedUser.id);
+                    if (handleMarkAttendanceRef.current) {
+                      handleMarkAttendanceRef.current(matchedUser.id, 'Hadir');
+                      showToastMessage(`QR dikenali: ${matchedUser.nama} berhasil diabsen sebagai Hadir`, 'success');
+                    } else {
+                      showToastMessage('Gagal menyimpan kehadiran. Coba lagi.', 'error');
+                    }
+                    stopCamera();
+                    return;
+                  } else {
+                    console.warn('[Scanner] No match found for QR data:', userData);
+                  }
+                } catch (err) {
+                  console.error('[Scanner] JSON parse error:', err);
+                }
             }
           }
         }
@@ -475,24 +482,34 @@ const [bulkEditValue, setBulkEditValue] = useState('');
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'dontInvert' });
         if (code && code.data) {
-          console.log('[Scanner] Image QR decoded:', code.data);
-          try {
-            const userData = JSON.parse(code.data);
-            const currentUsers = dataRef.current.users || [];
-            console.log('[Scanner] Image scan - current users count:', currentUsers.length);
-            console.log('[Scanner] Image scan - QR payload:', userData);
-            const matchedUser = currentUsers.find(u => u.id === userData.id || String(u.nomorInduk) === String(userData.nomorInduk));
-            console.log('[Scanner] Image scan - matched user:', matchedUser ? matchedUser.nama : 'null');
-            if (matchedUser) {
-              setScannedResult(matchedUser);
-              handleMarkAttendanceRef.current(matchedUser.id, 'Hadir');
-              showToastMessage(`QR dikenali: ${matchedUser.nama} berhasil diabsen sebagai Hadir`, 'success');
-            } else {
-              showToastMessage("Data QR tidak ditemukan di sistem.", 'error');
-            }
-          } catch (err) {
-            console.error('[Scanner] Image scan - JSON parse error:', err);
-            showToastMessage("Format QR tidak valid.", 'error');
+          const now = Date.now();
+          if (now - scanCooldownRef.current < 2000) {
+              // Cooldown aktif, hindari scan duplikat
+          } else {
+              console.log('[Scanner] Image QR decoded:', code.data);
+              try {
+                const userData = JSON.parse(code.data);
+                const currentUsers = dataRef.current.users || [];
+                console.log('[Scanner] Image scan - current users count:', currentUsers.length);
+                console.log('[Scanner] Image scan - QR payload:', userData);
+                const matchedUser = currentUsers.find(u => u.id === userData.id || String(u.nomorInduk) === String(userData.nomorInduk));
+                console.log('[Scanner] Image scan - matched user:', matchedUser ? matchedUser.nama : 'null');
+                if (matchedUser) {
+                  scanCooldownRef.current = now;
+                  setScannedResult(matchedUser);
+                  if (handleMarkAttendanceRef.current) {
+                    handleMarkAttendanceRef.current(matchedUser.id, 'Hadir');
+                    showToastMessage(`QR dikenali: ${matchedUser.nama} berhasil diabsen sebagai Hadir`, 'success');
+                  } else {
+                    showToastMessage('Gagal menyimpan kehadiran. Coba lagi.', 'error');
+                  }
+                } else {
+                  showToastMessage("Data QR tidak ditemukan di sistem.", 'error');
+                }
+              } catch (err) {
+                console.error('[Scanner] Image scan - JSON parse error:', err);
+                showToastMessage("Format QR tidak valid.", 'error');
+              }
           }
         } else {
           showToastMessage("Tidak dapat membaca QR code. Pastikan gambar jelas.", 'error');
@@ -610,32 +627,6 @@ const [bulkEditValue, setBulkEditValue] = useState('');
       e.target.value = '';
   };
 
-  const handleAppLogoUpload = (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (event) => {
-          const img = new Image();
-          img.onload = () => {
-              const canvas = document.createElement('canvas');
-              const MAX_WIDTH = 250; 
-              const scaleSize = MAX_WIDTH / img.width;
-              canvas.width = MAX_WIDTH;
-              canvas.height = img.height * scaleSize;
-              const ctx = canvas.getContext('2d');
-              ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-              const compressedDataUrl = canvas.toDataURL('image/png'); 
-              const newSettings = { ...(appSettings || {}), appLogo: compressedDataUrl };
-              setAppSettings(newSettings);
-              saveToBackend({ appSettings: newSettings });
-              showToastMessage("Logo aplikasi berhasil dipasang.", "success");
-          };
-          img.src = event.target.result;
-      };
-      reader.readAsDataURL(file);
-      e.target.value = '';
-  };
-  
   const handlePdfConfigChange = (key, value) => {
       const newPdfConfig = {...(pdfConfig || {}), [key]: value};
       setPdfConfig(newPdfConfig);
@@ -655,9 +646,11 @@ const [bulkEditValue, setBulkEditValue] = useState('');
     });
 
     const handleMarkAttendance = (userId, status) => {
+        const currentAttendance = dataRef.current.attendance || {};
+        const currentDate = selectedDateRef.current;
         const newAttendance = {
-            ...safeAttendance,
-            [selectedDate]: { ...(safeAttendance[selectedDate] || {}), [userId]: status }
+            ...currentAttendance,
+            [currentDate]: { ...(currentAttendance[currentDate] || {}), [userId]: status }
         };
         setAttendance(newAttendance);
         saveToBackend({ attendance: newAttendance });
@@ -1503,23 +1496,6 @@ const [bulkEditValue, setBulkEditValue] = useState('');
                                     saveToBackend({ appSettings: newSettings });
                                 }} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Sistem Absensi" />
                             </div>
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Logo Aplikasi (PNG/JPG)</label>
-                                <input type="file" accept="image/png, image/jpeg" className="hidden" ref={appLogoInputRef} onChange={handleAppLogoUpload} />
-                                <div className="flex items-center gap-3">
-                                    <button onClick={() => appLogoInputRef.current.click()} className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-4 py-2.5 rounded-xl transition-all flex items-center gap-2 text-sm">
-                                        <i className="fas fa-upload text-indigo-600"></i> Upload Logo
-                                    </button>
-                                    {appSettings?.appLogo && (
-                                        <button onClick={() => {
-                                            const newSettings = { ...(appSettings || {}), appLogo: null };
-                                            setAppSettings(newSettings);
-                                            saveToBackend({ appSettings: newSettings });
-                                            showToastMessage("Logo dihapus.", "success");
-                                        }} className="text-rose-600 font-bold text-sm">Hapus</button>
-                                    )}
-                                </div>
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -1597,14 +1573,7 @@ const [bulkEditValue, setBulkEditValue] = useState('');
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between pt-4 pb-2 gap-4">
                     <div className="flex items-center gap-3">
                         <div className="w-11 h-11 bg-white rounded-2xl shadow-md border border-slate-100 flex items-center justify-center p-1.5 shrink-0 overflow-hidden">
-                              {appSettings?.appLogo && !logoError ? (
-                                  <img src={appSettings.appLogo} alt="Logo" className="w-full h-full object-contain" onError={() => setLogoError(true)} />
-                              ) : (
-                                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" className="w-full h-full">
-                                     <circle cx="250" cy="250" r="230" fill="#f18333" stroke="#233441" strokeWidth="20"/>
-                                     <path d="M350 140L194 296l-44-44 44 44a160 160 0 10194 0v-44l44 44z" fill="none" stroke="#233441" strokeWidth="24" strokeLinecap="round" strokeLinejoin="round"/>
-                                 </svg>
-                             )}
+                              <img src={defaultLogoUrl} alt="Logo" className="w-full h-full object-contain" />
                         </div>
                         <h1 className="text-xl font-extrabold text-slate-800 tracking-tight">{String((appSettings && appSettings.appName) || "Sistem Absensi")}</h1>
                     </div>
@@ -2030,14 +1999,7 @@ const [bulkEditValue, setBulkEditValue] = useState('');
                                 <div key={user.id} className="bg-white border-2 border-slate-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all print:break-inside-avoid">
                                     <div className="bg-gradient-to-r from-indigo-600 to-indigo-700 p-3 flex items-center gap-3">
                                         <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center p-1 overflow-hidden shrink-0">
-                                            {appSettings?.appLogo && !logoError ? (
-                                                <img src={appSettings.appLogo} alt="Logo" className="w-full h-full object-contain" />
-                                            ) : (
-                                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" className="w-full h-full">
-                                                    <circle cx="250" cy="250" r="230" fill="#f18333" stroke="#233441" strokeWidth="20"/>
-                                                    <path d="M350 140L194 296l-44-44 44 44a160 160 0 10194 0v-44l44 44z" fill="none" stroke="#233441" strokeWidth="24" strokeLinecap="round" strokeLinejoin="round"/>
-                                                </svg>
-                                            )}
+                                            <img src={defaultLogoUrl} alt="Logo" className="w-full h-full object-contain" />
                                         </div>
                                         <div>
                                             <p className="text-white font-extrabold text-sm tracking-tight">{String((appSettings && appSettings.appName) || "Sistem Absensi")}</p>
