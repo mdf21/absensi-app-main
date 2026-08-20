@@ -4,7 +4,7 @@ import { jsPDF } from 'jspdf';
 import { autoTable } from 'jspdf-autotable';
 import LZString from 'lz-string';
 import QRCode from 'qrcode';
-import jsQR from 'jsQR';
+import jsQR from 'jsqr';
 import defaultLogoUrl from './assets/logo.png';
 
 const Toast = ({ message, type, onClose }) => {
@@ -89,6 +89,31 @@ const [newHolidayName, setNewHolidayName] = useState('');
   const selectedDateRef = useRef(selectedDate);
   const handleMarkAttendanceRef = useRef(null);
   const scanCooldownRef = useRef(0);
+
+const handleMarkAttendance = async (id, status) => {
+    const currentDate = selectedDateRef.current;
+    let isSuccess = false;
+
+    setAttendance(prev => {
+        const prevData = prev || {};
+        const todayData = prevData[currentDate] || {};
+        
+        const newData = {
+            ...prevData,
+            [currentDate]: {
+                ...todayData,
+                [id]: status
+            }
+        };
+        
+        // Simpan otomatis ke backend/database
+        saveToBackend({ attendance: newData });
+        isSuccess = true;
+        return newData;
+    });
+
+    return isSuccess;
+  };
 
   useEffect(() => {
     selectedDateRef.current = selectedDate;
@@ -451,8 +476,8 @@ const [bulkEditValue, setBulkEditValue] = useState('');
                     } else {
                       showToastMessage('Gagal menyimpan kehadiran. Coba lagi.', 'error');
                     }
-                    stopCamera();
-                    return;
+                    //stopCamera();
+                    //return;
                   } else {
                     console.warn('[Scanner] No match found for QR data:', userData);
                   }
@@ -478,7 +503,7 @@ const [bulkEditValue, setBulkEditValue] = useState('');
     reader.onload = (event) => {
       setScanImage(event.target.result);
       const img = new Image();
-      img.onload = () => {
+      img.onload = async () => {
         const canvas = document.createElement('canvas');
         canvas.width = img.width;
         canvas.height = img.height;
