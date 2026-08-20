@@ -330,7 +330,7 @@ const [bulkEditValue, setBulkEditValue] = useState('');
         appSettings: nextAppSettings
     };
 
-    fetch('/api/data', {
+    return fetch('/api/data', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
@@ -341,7 +341,6 @@ const [bulkEditValue, setBulkEditValue] = useState('');
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}`);
             }
-
             console.log('✅ Data berhasil disimpan ke backend.');
         })
         .catch(err => {
@@ -349,6 +348,8 @@ const [bulkEditValue, setBulkEditValue] = useState('');
                 '⚠️ Penyimpanan latar belakang tertunda:',
                 err
             );
+            showToastMessage('Gagal menyimpan data ke backend. Periksa koneksi/server.', 'error');
+            throw err;
         });
   };
 
@@ -411,7 +412,7 @@ const [bulkEditValue, setBulkEditValue] = useState('');
         videoRef.current.play();
       }
       setCameraActive(true);
-      const tick = () => {
+      const tick = async () => {
         if (!videoRef.current || !canvasRef.current || !streamRef.current) return;
         if (videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA) {
           const video = videoRef.current;
@@ -441,8 +442,12 @@ const [bulkEditValue, setBulkEditValue] = useState('');
                     const currentDate = selectedDateRef.current;
                     console.log('[Scanner] Marking attendance for date:', currentDate, 'user:', matchedUser.id);
                     if (handleMarkAttendanceRef.current) {
-                      handleMarkAttendanceRef.current(matchedUser.id, 'Hadir');
-                      showToastMessage(`QR dikenali: ${matchedUser.nama} berhasil diabsen sebagai Hadir`, 'success');
+                      const saved = await handleMarkAttendanceRef.current(matchedUser.id, 'Hadir');
+                      if (saved) {
+                        showToastMessage(`QR dikenali: ${matchedUser.nama} berhasil diabsen sebagai Hadir`, 'success');
+                      } else {
+                        showToastMessage('Gagal menyimpan kehadiran. Coba lagi.', 'error');
+                      }
                     } else {
                       showToastMessage('Gagal menyimpan kehadiran. Coba lagi.', 'error');
                     }
@@ -498,8 +503,12 @@ const [bulkEditValue, setBulkEditValue] = useState('');
                   scanCooldownRef.current = now;
                   setScannedResult(matchedUser);
                   if (handleMarkAttendanceRef.current) {
-                    handleMarkAttendanceRef.current(matchedUser.id, 'Hadir');
-                    showToastMessage(`QR dikenali: ${matchedUser.nama} berhasil diabsen sebagai Hadir`, 'success');
+                    const saved = await handleMarkAttendanceRef.current(matchedUser.id, 'Hadir');
+                    if (saved) {
+                      showToastMessage(`QR dikenali: ${matchedUser.nama} berhasil diabsen sebagai Hadir`, 'success');
+                    } else {
+                      showToastMessage('Gagal menyimpan kehadiran. Coba lagi.', 'error');
+                    }
                   } else {
                     showToastMessage('Gagal menyimpan kehadiran. Coba lagi.', 'error');
                   }
@@ -645,7 +654,7 @@ const [bulkEditValue, setBulkEditValue] = useState('');
         return matchClass && matchPeran && matchSearch;
     });
 
-    const handleMarkAttendance = (userId, status) => {
+    const handleMarkAttendance = async (userId, status) => {
         const currentAttendance = dataRef.current.attendance || {};
         const currentDate = selectedDateRef.current;
         const newAttendance = {
@@ -653,7 +662,13 @@ const [bulkEditValue, setBulkEditValue] = useState('');
             [currentDate]: { ...(currentAttendance[currentDate] || {}), [userId]: status }
         };
         setAttendance(newAttendance);
-        saveToBackend({ attendance: newAttendance });
+        try {
+            await saveToBackend({ attendance: newAttendance });
+            return true;
+        } catch (err) {
+            console.error('Gagal menyimpan kehadiran:', err);
+            return false;
+        }
     };
 
     const handleBulkMarkAttendance = (status) => {
